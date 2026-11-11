@@ -1,0 +1,22 @@
+{
+  "name": "tenant-pm-api",
+  "version": "1.4.0",
+  "private": true,
+  "type": "module",
+  "description": "Multi-tenant project management API (Fastify + SQLite)",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "dev": "node --watch src/server.ts",
+    "start": "node src/server.ts",
+    "seed": "node src/seed.ts",
+    "test": "node --test \"tests/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "fastify": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.3"
+  }
+}
