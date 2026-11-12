@@ -7,7 +7,10 @@ export type Harness = {
   app: FastifyInstance;
   data: SeedResult;
   login: (email: string, password: string, tenantId?: string) => Promise<string>;
+  /** Legacy header set — includes the (now ignored) x-role claim. */
   as: (email: string) => Promise<{ authorization: string; 'x-role': string }>;
+  /** Real client headers: only the bearer token, nothing the client could fake. */
+  auth: (email: string) => Promise<{ authorization: string }>;
 };
 
 export async function makeHarness(): Promise<Harness> {
@@ -28,12 +31,19 @@ export async function makeHarness(): Promise<Harness> {
     return res.json().token as string;
   };
 
-  const as = async (email: string) => {
+  const tokenFor = async (email: string): Promise<string> => {
     const person = data.users[email];
     if (!person) throw new Error(`unknown seed user ${email}`);
-    const token = await login(email, person.password, person.tenantId);
+    return login(email, person.password, person.tenantId);
+  };
+
+  const as = async (email: string) => {
+    const person = data.users[email];
+    const token = await tokenFor(email);
     return { authorization: `Bearer ${token}`, 'x-role': person.role } as const;
   };
 
-  return { app, data, login, as };
+  const auth = async (email: string) => ({ authorization: `Bearer ${await tokenFor(email)}` });
+
+  return { app, data, login, as, auth };
 }

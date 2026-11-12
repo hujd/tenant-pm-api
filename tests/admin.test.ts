@@ -3,22 +3,27 @@ import assert from 'node:assert/strict';
 import { makeHarness } from './helpers.ts';
 
 describe('admin console', () => {
-  it('lists users with their workspace memberships', async () => {
+  it('lists users with their workspace memberships, scoped to the caller tenant', async () => {
     const harness = await makeHarness();
     const headers = await harness.as('alice@acme.test');
     const res = await harness.app.inject({ method: 'GET', url: '/admin/users', headers });
     assert.equal(res.statusCode, 200);
-    assert.ok(res.json().items.length >= 5);
+    // Only Acme's three members — Globex users must never appear.
+    assert.equal(res.json().items.length, 3);
     assert.ok('roles' in res.json().items[0]);
+    for (const u of res.json().items) {
+      assert.equal(String(u.tenant_ids).split(',').every((t: string) => t === harness.data.tenants.id), true);
+    }
   });
 
-  it('lists workspaces with counters', async () => {
+  it('lists workspaces with counters, limited to the caller workspace', async () => {
     const harness = await makeHarness();
     const headers = await harness.as('alice@acme.test');
     const res = await harness.app.inject({ method: 'GET', url: '/admin/tenants', headers });
     assert.equal(res.statusCode, 200);
     const items = res.json().items;
-    assert.ok(items.length >= 2);
+    assert.equal(items.length, 1);
+    assert.equal(items[0].id, harness.data.tenants.id);
     assert.ok('members' in items[0]);
   });
 

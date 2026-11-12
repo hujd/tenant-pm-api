@@ -1,25 +1,3 @@
-import type { FastifyReply, FastifyRequest } from 'fastify';
-import type { RequestContext } from '../db.ts';
-import { isAdminRole } from '../auth.ts';
-
-export function requireCtx(req: FastifyRequest, reply: FastifyReply): RequestContext | null {
-  if (!req.ctx) {
-    reply.status(401).send({ error: 'unauthorized', message: 'missing or expired session' });
-    return null;
-  }
-  return req.ctx;
-}
-
-export function requireAdminCtx(req: FastifyRequest, reply: FastifyReply): RequestContext | null {
-  const ctx = requireCtx(req, reply);
-  if (!ctx) return null;
-  if (!isAdminRole(ctx.role)) {
-    reply.status(403).send({ error: 'forbidden', message: 'admin role required' });
-    return null;
-  }
-  return ctx;
-}
-
 export function parseLimit(raw: unknown, fallback = 50, max = 200): number {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return fallback;

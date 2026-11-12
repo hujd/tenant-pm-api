@@ -129,6 +129,17 @@ create index if not exists idx_comments_task     on comments (task_id);
 create index if not exists idx_attachments_task  on attachments (task_id);
 create index if not exists idx_memberships_user  on memberships (user_id);
 create index if not exists idx_audit_tenant      on audit_logs (tenant_id, created_at);
+
+-- Authorization lookups added during the multi-tenant isolation remediation.
+-- Indexes only: no table/column changes, safe to apply to live databases.
+create index if not exists idx_memberships_tenant_user on memberships (tenant_id, user_id, status);
+create index if not exists idx_comments_tenant         on comments (tenant_id);
+create index if not exists idx_attachments_tenant      on attachments (tenant_id);
+create index if not exists idx_export_jobs_tenant      on export_jobs (tenant_id);
+create index if not exists idx_webhooks_tenant         on webhooks (tenant_id);
+create index if not exists idx_tasks_tenant_project    on tasks (tenant_id, project_id);
+create index if not exists idx_projects_tenant_active  on projects (tenant_id, deleted_at);
+create index if not exists idx_sessions_user_tenant    on sessions (user_id, tenant_id);
 `;
 
 export function openDb(file?: string): DatabaseSync {

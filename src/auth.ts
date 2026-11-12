@@ -29,8 +29,9 @@ export function resolveSession(db: DatabaseSync, token: string): RequestContext 
   if (new Date(row.expires_at).getTime() < Date.now()) return null;
 
   const membership: any = db
-    .prepare('select * from memberships where tenant_id = ? and user_id = ?')
+    .prepare("select * from memberships where tenant_id = ? and user_id = ? and status = 'active'")
     .get(row.tenant_id, row.user_id);
+  if (!membership) return null; // disabled/suspended/removed memberships cannot hold a session
   const user: any = db.prepare('select * from users where id = ?').get(row.user_id);
   if (!user) return null;
 

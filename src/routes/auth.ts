@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { newId, nowIso, audit } from '../db.ts';
 import { createSession, destroySession, hashPassword } from '../auth.ts';
-import { requireCtx } from './helpers.ts';
+import { requireSession } from '../authz.ts';
 
 type LoginBody = { email: string; password: string; tenantId?: string };
 
@@ -85,18 +85,16 @@ export default async function authRoutes(app: FastifyInstance) {
     },
   );
 
-  app.post('/auth/logout', async (req, reply) => {
-    const ctx = requireCtx(req, reply);
-    if (!ctx) return;
+  app.post('/auth/logout', { preHandler: requireSession }, async (req, reply) => {
+    const ctx = req.ctx!;
     const header = String(req.headers['authorization'] ?? '');
     destroySession(db, header.replace(/^Bearer\s+/i, ''));
     audit(db, ctx.tenantId, ctx.userId, 'auth.logout', ctx.userId);
     return reply.send({ ok: true });
   });
 
-  app.get('/auth/me', async (req, reply) => {
-    const ctx = requireCtx(req, reply);
-    if (!ctx) return;
+  app.get('/auth/me', { preHandler: requireSession }, async (req, reply) => {
+    const ctx = req.ctx!;
     const tenant: any = db.prepare('select * from tenants where id = ?').get(ctx.tenantId);
     return reply.send({
       user: { id: ctx.userId, email: ctx.email, name: ctx.name },

@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import type { DatabaseSync } from 'node:sqlite';
 import { openDb, type RequestContext } from './db.ts';
 import { bearerToken, resolveSession } from './auth.ts';
+import { HttpError } from './authz.ts';
 import authRoutes from './routes/auth.ts';
 import orgRoutes from './routes/org.ts';
 import workRoutes from './routes/work.ts';
@@ -31,8 +32,9 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   app.decorateRequest('ctx', null);
 
   // Every request gets a context when it carries a valid session token.
-  // Endpoints that need a tenant call `requireCtx` themselves; the public
-  // ones (health, login, meta) stay reachable without a session.
+  // Public endpoints (health, login, register, meta) stay reachable without a
+  // session; every other route enforces authentication/authorization through
+  // the central preHandler hooks in src/authz.ts.
   app.addHook('onRequest', async (req) => {
     const token = bearerToken(req.headers as Record<string, unknown>);
     req.ctx = token ? resolveSession(db, token) : null;
@@ -46,6 +48,10 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   await app.register(metaRoutes);
 
   app.setErrorHandler((err, _req, reply) => {
+    // Errors thrown by the central authorization layer carry their own code.
+    if (err instanceof HttpError) {
+      return reply.status(err.statusCode).send({ error: err.code, message: err.message });
+    }
     const status = (err as any).statusCode ?? 500;
     reply.status(status).send({
       error: status >= 500 ? 'internal_error' : (err as any).code ?? 'bad_request',

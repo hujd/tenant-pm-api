@@ -3,10 +3,14 @@ import { hashPassword } from './auth.ts';
 import type { DatabaseSync } from 'node:sqlite';
 
 export type SeedResult = {
-  tenants: { id: string; name: string };
+  tenants: { id: string; name: string; globexId: string };
   users: Record<string, { id: string; email: string; password: string; tenantId: string; role: string }>;
   projects: Record<string, string>;
   tasks: Record<string, string>;
+  comments: Record<string, string>;
+  attachments: Record<string, string>;
+  webhooks: Record<string, string>;
+  exportJobs: Record<string, string>;
 };
 
 /**
@@ -90,31 +94,36 @@ export function seed(db: DatabaseSync): SeedResult {
   }
 
   const commentSpecs = [
-    { tenantId: acme.id, taskId: tasks.acmeWebHero, userId: bob.id, body: 'Design handoff lives in Figma, page "Home v3".' },
-    { tenantId: acme.id, taskId: tasks.acmeWebHero, userId: alice.id, body: 'Please keep the CTA above the fold on 1366px.' },
-    { tenantId: globex.id, taskId: tasks.globexIngest, userId: erin.id, body: 'Backfill window starts 2024-11-01.' },
+    { key: 'acmeHero1', tenantId: acme.id, taskId: tasks.acmeWebHero, userId: bob.id, body: 'Design handoff lives in Figma, page "Home v3".' },
+    { key: 'acmeHero2', tenantId: acme.id, taskId: tasks.acmeWebHero, userId: alice.id, body: 'Please keep the CTA above the fold on 1366px.' },
+    { key: 'globexIngest1', tenantId: globex.id, taskId: tasks.globexIngest, userId: erin.id, body: 'Backfill window starts 2024-11-01.' },
   ];
+  const comments: Record<string, string> = {};
   for (const c of commentSpecs) {
+    const id = newId('cm');
     db.prepare('insert into comments (id, tenant_id, task_id, user_id, body, created_at) values (?,?,?,?,?,?)').run(
-      newId('cm'),
+      id,
       c.tenantId,
       c.taskId,
       c.userId,
       c.body,
       ts,
     );
+    comments[c.key] = id;
   }
 
   const attachmentSpecs = [
-    { tenantId: acme.id, taskId: tasks.acmeWebHero, filename: 'home-v3.png', size: 184_320 },
-    { tenantId: acme.id, taskId: tasks.acmeWebCms, filename: 'cms-migration.sql', size: 4_096 },
-    { tenantId: globex.id, taskId: tasks.globexIngest, filename: 'backfill-plan.xlsx', size: 22_011 },
+    { key: 'acmeHeroPng', tenantId: acme.id, taskId: tasks.acmeWebHero, filename: 'home-v3.png', size: 184_320 },
+    { key: 'acmeCmsSql', tenantId: acme.id, taskId: tasks.acmeWebCms, filename: 'cms-migration.sql', size: 4_096 },
+    { key: 'globexPlan', tenantId: globex.id, taskId: tasks.globexIngest, filename: 'backfill-plan.xlsx', size: 22_011 },
   ];
+  const attachments: Record<string, string> = {};
   for (const a of attachmentSpecs) {
     const id = newId('at');
     db.prepare(
       'insert into attachments (id, tenant_id, task_id, filename, size, storage_key, created_at) values (?,?,?,?,?,?,?)',
     ).run(id, a.tenantId, a.taskId, a.filename, a.size, `blob/${a.tenantId}/${id}/${a.filename}`, ts);
+    attachments[a.key] = id;
   }
 
   for (const t of [acme, globex]) {
@@ -122,15 +131,50 @@ export function seed(db: DatabaseSync): SeedResult {
     db.prepare('insert into settings (tenant_id, key, value) values (?,?,?)').run(t.id, 'week_start', 'monday');
   }
 
+  const webhooks: Record<string, string> = {};
+  const acmeWebhook = newId('wh');
   db.prepare('insert into webhooks (id, tenant_id, url, event, created_at) values (?,?,?,?,?)').run(
-    newId('wh'),
+    acmeWebhook,
     acme.id,
     'https://hooks.acme.test/tpm',
     'task.updated',
     ts,
   );
+  webhooks.acme = acmeWebhook;
+  const globexWebhook = newId('wh');
+  db.prepare('insert into webhooks (id, tenant_id, url, event, created_at) values (?,?,?,?,?)').run(
+    globexWebhook,
+    globex.id,
+    'https://hooks.globex.test/tpm',
+    'task.updated',
+    ts,
+  );
+  webhooks.globex = globexWebhook;
 
-  return { tenants: { id: acme.id, name: acme.name }, users, projects, tasks };
+  // One queued export job per tenant so cross-tenant access can be tested
+  // without creating the job inside the test itself.
+  const exportJobs: Record<string, string> = {};
+  for (const [key, tenantId] of [
+    ['acme', acme.id],
+    ['globex', globex.id],
+  ] as const) {
+    const id = newId('ex');
+    db.prepare(
+      'insert into export_jobs (id, tenant_id, user_id, kind, filters, status, created_at) values (?,?,?,?,?,?,?)',
+    ).run(id, tenantId, users[`${key === 'acme' ? 'alice' : 'dave'}@${key}.test`].id, 'tasks', '{}', 'queued', ts);
+    exportJobs[key] = id;
+  }
+
+  return {
+    tenants: { id: acme.id, name: acme.name, globexId: globex.id },
+    users,
+    projects,
+    tasks,
+    comments,
+    attachments,
+    webhooks,
+    exportJobs,
+  };
 }
 
 const isDirectRun = process.argv[1]?.replace(/\\/g, '/').endsWith('src/seed.ts');
